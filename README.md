@@ -33,7 +33,7 @@ segd2segy -i /path/to/segd_folder -o merged.sgy [options]
 |--------|-------------|
 | `-i`, `--input DIR` | Directory containing `.sgd` / `.segd` files |
 | `-o`, `--output FILE` | Output SEG-Y path |
-| `--pattern GLOB` | Filename filter (default: `*.sgd`) |
+| `--pattern GLOB` | Optional extra filter (default: all `.sgd` and `.segd`) |
 | `--sort name\|fileno` | Sort inputs by path or SEG-D file number (default: `name`) |
 | `--skip-service` | Export only **channel set 6**; CS 1–5 and others are treated as service |
 | `--include-types LIST` | Keep only these channel type codes (e.g. `1,0x10`) |
@@ -62,7 +62,7 @@ Filtering applies to **channel set descriptors** (not individual trace headers):
 Merge all traces from a folder:
 
 ```bash
-segd2segy -i ./data -o merged_all.sgy --pattern "*.sgd" -v
+segd2segy -i ./data -o merged_all.sgy -v
 ```
 
 Data channel set only (CS 6):

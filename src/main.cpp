@@ -20,7 +20,7 @@ namespace {
 struct Options {
     fs::path input_dir;
     fs::path output_file;
-    std::string pattern = "*.sgd";
+    std::string pattern;  // empty = all .sgd and .segd files
     std::string sort_mode = "name";
     bool skip_service = false;
     segdcore::ChannelFilter channel_filter;
@@ -33,7 +33,7 @@ void print_usage(const char* argv0) {
         << "Options:\n"
         << "  -i, --input DIR          Folder with SEG-D files (.sgd / .segd)\n"
         << "  -o, --output FILE        Output SEG-Y file\n"
-        << "  --pattern GLOB           File glob (default: *.sgd)\n"
+        << "  --pattern GLOB           Extra filename filter (default: all .sgd and .segd)\n"
         << "  --sort MODE              Sort input files: name | fileno (default: name)\n"
         << "  --skip-service           Export only channel set 6 (all other channel sets are service)\n"
         << "  --include-types LIST     Comma-separated channel type codes to keep\n"
@@ -108,23 +108,27 @@ Options parse_args(int argc, char** argv) {
     return options;
 }
 
+std::string path_extension_lower(const fs::path& path) {
+    std::string ext = path.extension().string();
+    std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return std::tolower(c); });
+    return ext;
+}
+
 bool matches_pattern(const fs::path& path, const std::string& pattern) {
-    if (pattern == "*" || pattern == "*.*") {
+    if (pattern.empty() || pattern == "*" || pattern == "*.*") {
         return true;
     }
     if (pattern.rfind("*.", 0) == 0) {
-        const std::string suffix = pattern.substr(1);
-        const std::string ext = path.extension().string();
-        return ext == suffix;
+        std::string suffix = pattern.substr(1);
+        std::transform(suffix.begin(), suffix.end(), suffix.begin(), [](unsigned char c) { return std::tolower(c); });
+        return path_extension_lower(path) == suffix;
     }
     return path.filename().string() == pattern;
 }
 
 bool is_segd_extension(const fs::path& path) {
-    const std::string ext = path.extension().string();
-    std::string lower = ext;
-    std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c) { return std::tolower(c); });
-    return lower == ".sgd" || lower == ".segd";
+    const std::string ext = path_extension_lower(path);
+    return ext == ".sgd" || ext == ".segd";
 }
 
 std::vector<fs::path> collect_input_files(const Options& options) {
