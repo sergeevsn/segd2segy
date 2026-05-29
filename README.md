@@ -38,6 +38,7 @@ segd2segy -i /path/to/segd_folder -o merged.sgy [options]
 | `--skip-service` | Export only **channel set 6**; CS 1–5 and others are treated as service |
 | `--include-types LIST` | Keep only these channel type codes (e.g. `1,0x10`) |
 | `--exclude-types LIST` | Drop these channel type codes |
+| `-p`, `--progress` | Text progress bar over SEG-D files (replaces `-v`) |
 | `-v`, `--verbose` | Log each file and skipped channel sets |
 | `-h`, `--help` | Show help |
 
@@ -63,6 +64,12 @@ Merge all traces from a folder:
 
 ```bash
 segd2segy -i ./data -o merged_all.sgy -v
+```
+
+With a progress bar (one step per SEG-D file):
+
+```bash
+segd2segy -i ./data -o merged_all.sgy -p
 ```
 
 Data channel set only (CS 6):

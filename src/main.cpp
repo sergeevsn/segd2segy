@@ -1,12 +1,23 @@
 #include <algorithm>
 #include <cctype>
 #include <filesystem>
+#include <iomanip>
 #include <iostream>
 #include <optional>
 #include <sstream>
 #include <stdexcept>
 #include <string>
 #include <vector>
+
+#if defined(_WIN32)
+#include <io.h>
+#define SEGD2SEGY_ISATTY _isatty
+#define SEGD2SEGY_FILENO _fileno
+#else
+#include <unistd.h>
+#define SEGD2SEGY_ISATTY isatty
+#define SEGD2SEGY_FILENO fileno
+#endif
 
 #include "segy_writer.hpp"
 #include "segdcore/channel_types.hpp"
@@ -25,6 +36,7 @@ struct Options {
     bool skip_service = false;
     segdcore::ChannelFilter channel_filter;
     bool verbose = false;
+    bool progress = false;
 };
 
 void print_usage(const char* argv0) {
@@ -38,7 +50,8 @@ void print_usage(const char* argv0) {
         << "  --skip-service           Export only channel set 6 (all other channel sets are service)\n"
         << "  --include-types LIST     Comma-separated channel type codes to keep\n"
         << "  --exclude-types LIST     Comma-separated channel type codes to drop\n"
-        << "  -v, --verbose            Print progress details\n"
+        << "  -p, --progress           Text progress bar over SEG-D files (replaces -v)\n"
+        << "  -v, --verbose            Print per-file and per-channel-set details\n"
         << "  -h, --help               Show this help\n";
 }
 
@@ -94,8 +107,13 @@ Options parse_args(int argc, char** argv) {
                 throw std::invalid_argument("Missing value for --exclude-types");
             }
             options.channel_filter.exclude_types = segdcore::parse_channel_type_list(*value);
+        } else if (arg == "-p" || arg == "--progress") {
+            options.progress = true;
+            options.verbose = false;
         } else if (arg == "-v" || arg == "--verbose") {
-            options.verbose = true;
+            if (!options.progress) {
+                options.verbose = true;
+            }
         } else {
             throw std::invalid_argument("Unknown argument: " + arg);
         }
@@ -173,6 +191,54 @@ std::vector<fs::path> collect_input_files(const Options& options) {
     return files;
 }
 
+class FileProgressBar {
+public:
+    FileProgressBar(int total_files, bool enabled)
+        : total_files_(std::max(total_files, 1)),
+          enabled_(enabled && total_files > 0),
+          interactive_(enabled_ && SEGD2SEGY_ISATTY(SEGD2SEGY_FILENO(stderr))) {}
+
+    void update(int current_file, const std::string& filename) {
+        if (!enabled_) {
+            return;
+        }
+
+        const int percent = (current_file * 100) / total_files_;
+        const int filled = (current_file * kBarWidth) / total_files_;
+
+        std::ostringstream line;
+        if (interactive_) {
+            line << '\r' << kPrefix << '[';
+            for (int i = 0; i < kBarWidth; ++i) {
+                line << (i < filled ? '=' : (i == filled ? '>' : ' '));
+            }
+            line << "] " << std::setw(3) << percent << "% (" << current_file << '/' << total_files_ << ") "
+                 << filename;
+            std::cerr << line.str() << std::string(kPadExtra, ' ');
+        } else {
+            line << kPrefix << '[' << current_file << '/' << total_files_ << "] " << std::setw(3) << percent
+                 << "% " << filename;
+            std::cerr << line.str() << '\n';
+        }
+        std::cerr.flush();
+    }
+
+    void finish() {
+        if (enabled_ && interactive_) {
+            std::cerr << '\n';
+        }
+    }
+
+private:
+    static constexpr int kBarWidth = 40;
+    static constexpr int kPadExtra = 8;
+    static constexpr const char* kPrefix = "SEG-D ";
+
+    int total_files_;
+    bool enabled_;
+    bool interactive_;
+};
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -192,6 +258,9 @@ int main(int argc, char** argv) {
         int traces_written = 0;
         int traces_skipped = 0;
 
+        FileProgressBar progress_bar(static_cast<int>(files.size()), options.progress);
+
+        int file_index = 0;
         for (const fs::path& path : files) {
             segdcore::SegdFile segd = segdcore::SegdFile::open(path.string(), false);
             const auto& general = segd.general();
@@ -260,7 +329,10 @@ int main(int argc, char** argv) {
                 ++traces_written;
             }
             ++files_written;
+            progress_bar.update(file_index + 1, path.filename().string());
+            ++file_index;
         }
+        progress_bar.finish();
 
         if (traces_written == 0) {
             throw std::runtime_error("No traces were written; check channel filters and input files");
