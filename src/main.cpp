@@ -47,7 +47,7 @@ void print_usage(const char* argv0) {
         << "  -o, --output FILE        Output SEG-Y file\n"
         << "  --pattern GLOB           Extra filename filter (default: all .sgd and .segd)\n"
         << "  --sort MODE              Sort input files: name | fileno (default: name)\n"
-        << "  --skip-service           Export only channel set 6 (all other channel sets are service)\n"
+        << "  --skip-service           Export only the last channel set by number in each file\n"
         << "  --include-types LIST     Comma-separated channel type codes to keep\n"
         << "  --exclude-types LIST     Comma-separated channel type codes to drop\n"
         << "  -p, --progress           Text progress bar over SEG-D files (replaces -v)\n"
@@ -243,7 +243,7 @@ private:
 
 int main(int argc, char** argv) {
     try {
-        const Options options = parse_args(argc, argv);
+        Options options = parse_args(argc, argv);
         const std::vector<fs::path> files = collect_input_files(options);
 
         std::optional<int> reference_ns;
@@ -273,9 +273,20 @@ int main(int argc, char** argv) {
                 std::cerr << "Warning: format code mismatch in " << path << '\n';
             }
 
+            options.channel_filter.begin_file(segd.channel_sets());
+
             if (options.verbose) {
                 std::cout << "Reading " << path.filename().string() << " (file_number=" << general.file_number
-                          << ", traces=" << segd.traces().size() << ")\n";
+                          << ", traces=" << segd.traces().size() << ")";
+                if (options.skip_service) {
+                    const int keep_cs = options.channel_filter.keep_channel_set_number();
+                    if (keep_cs >= 0) {
+                        std::cout << ", keep CS" << keep_cs;
+                    } else {
+                        std::cout << ", keep CS (none)";
+                    }
+                }
+                std::cout << '\n';
             }
 
             int file_trace_number = 0;

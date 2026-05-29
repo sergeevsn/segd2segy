@@ -35,7 +35,7 @@ segd2segy -i /path/to/segd_folder -o merged.sgy [options]
 | `-o`, `--output FILE` | Output SEG-Y path |
 | `--pattern GLOB` | Optional extra filter (default: all `.sgd` and `.segd`) |
 | `--sort name\|fileno` | Sort inputs by path or SEG-D file number (default: `name`) |
-| `--skip-service` | Export only **channel set 6**; CS 1–5 and others are treated as service |
+| `--skip-service` | Export only the **last channel set by number** in each file (e.g. CS 2 if only CS 1–2 exist) |
 | `--include-types LIST` | Keep only these channel type codes (e.g. `1,0x10`) |
 | `--exclude-types LIST` | Drop these channel type codes |
 | `-p`, `--progress` | Text progress bar over SEG-D files (replaces `-v`) |
@@ -46,7 +46,7 @@ segd2segy -i /path/to/segd_folder -o merged.sgy [options]
 
 Filtering applies to **channel set descriptors** (not individual trace headers):
 
-- **`--skip-service`** — writes traces from channel set number **6** only. 
+- **`--skip-service`** — per SEG-D file, keeps only the channel set with the **highest** `channel_set_number` present in that file (lower-numbered sets are treated as service).
 - **`--include-types`** — if set, only listed channel **types** are kept (overrides `--skip-service`).
 - **`--exclude-types`** — drops listed types when no include list is given.
 
@@ -72,10 +72,10 @@ With a progress bar (one step per SEG-D file):
 segd2segy -i ./data -o merged_all.sgy -p
 ```
 
-Data channel set only (CS 6):
+Last channel set only (per file):
 
 ```bash
-segd2segy -i ./data -o merged_cs6.sgy --skip-service -v
+segd2segy -i ./data -o merged_data.sgy --skip-service -v
 ```
 
 Filter by channel type (legacy type 1 and Rev.3 `0x10`):
@@ -115,7 +115,7 @@ segd2segy/
 
 - One demux sample format per run (warning if input files disagree).
 - No support for multiplexed SEG-D or SEG-B expansion yet.
-- `--skip-service` is hard-coded to channel set **6**; generalize with a future `--keep-channel-set` option if needed.
+- `--skip-service` selects the last channel set by number per file, not by channel type.
 
 ## Publish to GitHub
 

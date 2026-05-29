@@ -1,7 +1,10 @@
 #include "segdcore/channel_types.hpp"
 
+#include <algorithm>
 #include <cctype>
 #include <sstream>
+
+#include "segdcore/headers.hpp"
 
 namespace segdcore {
 namespace {
@@ -56,6 +59,16 @@ bool is_default_seismic_channel_type(int channel_type, int revision_major) {
     return channel_type == 1;
 }
 
+void ChannelFilter::begin_file(const std::vector<ChannelSet>& channel_sets) {
+    keep_channel_set_number_ = -1;
+    if (!skip_service) {
+        return;
+    }
+    for (const ChannelSet& channel_set : channel_sets) {
+        keep_channel_set_number_ = std::max(keep_channel_set_number_, channel_set.channel_set_number);
+    }
+}
+
 bool ChannelFilter::include_channel_set(
     int channel_set_number,
     int channel_type,
@@ -68,7 +81,7 @@ bool ChannelFilter::include_channel_set(
     }
     if (skip_service) {
         (void)revision_major;
-        return channel_set_number == keep_channel_set_number;
+        return keep_channel_set_number_ >= 0 && channel_set_number == keep_channel_set_number_;
     }
     return true;
 }
