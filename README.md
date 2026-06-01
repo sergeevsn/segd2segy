@@ -61,8 +61,8 @@ Filtering applies to **channel set descriptors** (not individual trace headers):
 ### Output SEG-Y
 
 - Text header — 3200 bytes (EBCDIC).
-- Binary header — 400 bytes; **format 5**, `dt` and `ns` from the first written trace.
-- Trace — 240-byte header + `ns` × 4-byte IEEE float samples (native endian).
+- Binary header — 400 bytes; **format 5**, `dt` from the first file, `ns` uniform for the whole file (from the channel set descriptor, typically the same for all traces).
+- Trace — 240-byte header + `ns` × 4-byte IEEE float samples (native endian); every trace uses the same `ns`, padded with zeros or truncated to match the descriptor.
 
 Trace headers include `tracl`, `tracr`/`tracf`, `fldr`, `cdp` (channel set number), `ns`, `dt`, and channel set / scan type in writer-specific byte positions.
 

@@ -259,6 +259,55 @@ std::vector<fs::path> collect_input_files(const Options& options) {
     return files;
 }
 
+int resolve_output_ns_for_file(
+    const segdcore::SegdFile& segd,
+    const segdcore::ChannelFilter& filter,
+    int revision_major) {
+    int descriptor_ns = 0;
+    for (const segdcore::ChannelSet& channel_set : segd.channel_sets()) {
+        if (!filter.include_channel_set(
+                channel_set.channel_set_number,
+                channel_set.channel_type_number,
+                revision_major)) {
+            continue;
+        }
+        if (channel_set.sample_count > 0) {
+            descriptor_ns = std::max(descriptor_ns, channel_set.sample_count);
+        }
+    }
+    if (descriptor_ns > 0) {
+        return descriptor_ns;
+    }
+
+    int trace_ns = 0;
+    for (const segdcore::Trace& trace : segd.traces()) {
+        if (!trace.channel_set) {
+            continue;
+        }
+        const segdcore::ChannelSet& channel_set = *trace.channel_set;
+        if (!filter.include_channel_set(
+                channel_set.channel_set_number,
+                channel_set.channel_type_number,
+                revision_major)) {
+            continue;
+        }
+        trace_ns = std::max(trace_ns, trace.header.sample_count);
+    }
+    return trace_ns;
+}
+
+std::vector<float> fit_samples_to_ns(std::vector<float> samples, int output_ns) {
+    if (output_ns <= 0) {
+        return samples;
+    }
+    if (static_cast<int>(samples.size()) < output_ns) {
+        samples.resize(static_cast<std::size_t>(output_ns), 0.0f);
+    } else if (static_cast<int>(samples.size()) > output_ns) {
+        samples.resize(static_cast<std::size_t>(output_ns));
+    }
+    return samples;
+}
+
 class FileProgressBar {
 public:
     FileProgressBar(int total_files, bool enabled)
@@ -318,7 +367,7 @@ int main(int argc, char** argv) {
         Options options = parse_args(argc, argv);
         const std::vector<fs::path> files = collect_input_files(options);
 
-        std::optional<int> reference_ns;
+        std::optional<int> output_ns;
         std::optional<int> reference_dt_us;
         std::optional<int> reference_format;
 
@@ -352,7 +401,6 @@ int main(int argc, char** argv) {
 
             if (!reference_format.has_value()) {
                 reference_format = general.format_code;
-                reference_ns = -1;
                 reference_dt_us = static_cast<int>(general.sample_interval_ms * 1000.0);
             } else if (reference_format.value() != general.format_code) {
                 std::cerr << "Warning: format code mismatch in " << path << '\n';
@@ -375,6 +423,17 @@ int main(int argc, char** argv) {
             }
 
             int file_trace_number = 0;
+            bool file_ns_adjusted = false;
+
+            if (!output_ns.has_value()) {
+                const int candidate = resolve_output_ns_for_file(segd, options.channel_filter, general.revision_major);
+                if (candidate > 0) {
+                    output_ns = candidate;
+                    if (options.verbose) {
+                        std::cout << "  output ns=" << candidate << " (from channel set descriptor)\n";
+                    }
+                }
+            }
 
             for (const segdcore::Trace& trace : segd.traces()) {
                 if (!trace.channel_set) {
@@ -397,18 +456,24 @@ int main(int argc, char** argv) {
                     continue;
                 }
 
-                const std::vector<float> samples = segd.read_samples(trace);
-                if (!reference_ns.has_value() || reference_ns.value() < 0) {
-                    reference_ns = static_cast<int>(samples.size());
-                } else if (static_cast<int>(samples.size()) != reference_ns.value()) {
-                    std::cerr << "Warning: sample count mismatch in " << path << " trace "
-                              << trace.header.trace_number << '\n';
+                std::vector<float> samples = segd.read_samples(trace);
+                const int trace_ns = static_cast<int>(samples.size());
+
+                if (!output_ns.has_value()) {
+                    output_ns = trace_ns;
+                    if (options.verbose) {
+                        std::cout << "  output ns=" << trace_ns << " (from first trace)\n";
+                    }
+                } else if (trace_ns != output_ns.value()) {
+                    file_ns_adjusted = true;
                 }
+
+                samples = fit_samples_to_ns(std::move(samples), output_ns.value());
 
                 if (!writer.trace_count()) {
                     writer.write_binary_header(
                         reference_dt_us.value_or(static_cast<int>(general.sample_interval_ms * 1000.0)),
-                        reference_ns.value_or(static_cast<int>(samples.size())),
+                        output_ns.value(),
                         5);
                 }
 
@@ -417,13 +482,19 @@ int main(int argc, char** argv) {
                 meta.fldr = general.file_number >= 0 ? general.file_number : files_written + 1;
                 meta.tracf = ++file_trace_number;
                 meta.cdp = channel_set.channel_set_number;
-                meta.ns = static_cast<int>(samples.size());
+                meta.ns = output_ns.value();
                 meta.dt_us = static_cast<int>(channel_set.sample_interval_ms * 1000.0);
                 meta.channel_set_number = channel_set.channel_set_number;
                 meta.scan_type_number = channel_set.scan_type_number;
                 writer.write_trace(meta, samples);
                 ++traces_written;
             }
+
+            if (file_ns_adjusted) {
+                std::cerr << "Warning: trace sample count adjusted to ns=" << output_ns.value() << " in "
+                          << path << '\n';
+            }
+
             ++files_written;
             } catch (const std::exception& error) {
                 if (!options.skip_errors) {
