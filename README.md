@@ -35,6 +35,7 @@ segd2segy -i /path/to/segd_folder -o merged.sgy [options]
 | `-o`, `--output FILE` | Output SEG-Y path |
 | `--pattern GLOB` | Optional filename filter (default: all `.sgd` and `.segd`) |
 | `--skip-service` | Export only the channel set with the **highest** `channel_set_number` in each file |
+| `--skip-errors` | Skip files that fail to open or read; print a warning and continue |
 | `--include-types LIST` | Keep only these channel type codes (e.g. `1,0x10`) |
 | `--exclude-types LIST` | Drop these channel type codes |
 | `-p`, `--progress` | Progress bar over SEG-D files (replaces `-v`) |
@@ -77,6 +78,12 @@ With progress bar:
 
 ```bash
 segd2segy -i ./data -o merged_all.sgy -p
+```
+
+Skip corrupted SEG-D files (e.g. during a large merge):
+
+```bash
+segd2segy -i ./data -o merged.sgy -p --skip-errors
 ```
 
 Last channel set only (per file):

@@ -39,6 +39,7 @@ struct Options {
     segdcore::ChannelFilter channel_filter;
     bool verbose = false;
     bool progress = false;
+    bool skip_errors = false;
 };
 
 void print_usage(const char* argv0) {
@@ -49,6 +50,7 @@ void print_usage(const char* argv0) {
         << "  -o, --output FILE        Output SEG-Y file\n"
         << "  --pattern GLOB           Extra filename filter (default: all .sgd and .segd)\n"
         << "  --skip-service           Export only the last channel set by number in each file\n"
+        << "  --skip-errors            Skip SEG-D files that fail to open or read (warn and continue)\n"
         << "  --include-types LIST     Comma-separated channel type codes to keep\n"
         << "  --exclude-types LIST     Comma-separated channel type codes to drop\n"
         << "  -p, --progress           Text progress bar over SEG-D files (replaces -v)\n"
@@ -162,6 +164,8 @@ Options parse_args(int argc, char** argv) {
             options.pattern = *value;
         } else if (arg == "--skip-service") {
             options.skip_service = true;
+        } else if (arg == "--skip-errors") {
+            options.skip_errors = true;
         } else if (arg == "--include-types") {
             const auto value = arg_value(i, argc, argv);
             if (!value) {
@@ -323,15 +327,19 @@ int main(int argc, char** argv) {
 
         int global_tracl = 0;
         int files_written = 0;
+        int files_skipped = 0;
         int traces_written = 0;
         int traces_skipped = 0;
 
         FileProgressBar progress_bar(static_cast<int>(files.size()), options.progress);
+        const bool progress_interactive =
+            options.progress && SEGD2SEGY_ISATTY(SEGD2SEGY_FILENO(stderr));
 
         int file_index = 0;
         for (const fs::path& path : files) {
             progress_bar.update(file_index + 1, path.filename().string());
 
+            try {
             segdcore::SegdFile segd;
             try {
                 segd = segdcore::SegdFile::open(path.string(), false);
@@ -417,6 +425,16 @@ int main(int argc, char** argv) {
                 ++traces_written;
             }
             ++files_written;
+            } catch (const std::exception& error) {
+                if (!options.skip_errors) {
+                    throw;
+                }
+                if (progress_interactive) {
+                    std::cerr << '\n';
+                }
+                std::cerr << "Warning: skipping " << path << ": " << error.what() << '\n';
+                ++files_skipped;
+            }
             ++file_index;
         }
         progress_bar.finish();
@@ -427,6 +445,9 @@ int main(int argc, char** argv) {
 
         std::cout << "Wrote " << traces_written << " traces from " << files_written << " SEG-D files to "
                   << options.output_file << '\n';
+        if (files_skipped > 0) {
+            std::cout << "Skipped " << files_skipped << " SEG-D file(s) (--skip-errors)\n";
+        }
         if (traces_skipped > 0) {
             std::cout << "Skipped " << traces_skipped << " traces (channel filter)\n";
         }
