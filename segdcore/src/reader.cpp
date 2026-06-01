@@ -22,26 +22,11 @@ std::size_t len(const std::vector<std::uint8_t>& data) {
     return data.size();
 }
 
-int read_format_code(const std::uint8_t* buf, std::size_t buflen) {
-    if (buflen < 32) {
-        return 0;
-    }
-    const std::string text = hex_nibbles(buf, buflen, 5, 4);
-    if (text.empty() || is_all_sentinel_f(text)) {
-        return -1;
-    }
-    try {
-        return parse_nibble_text(text);
-    } catch (const std::exception&) {
-        return 0;
-    }
-}
-
 bool looks_like_segd(const std::uint8_t* buf, std::size_t buflen) {
     if (buflen < 32) {
         return false;
     }
-    const int format_code = read_format_code(buf, buflen);
+    const int format_code = demux_format_from_nibbles(buf, buflen);
     if (format_code == 200) {
         return true;
     }
@@ -51,10 +36,16 @@ bool looks_like_segd(const std::uint8_t* buf, std::size_t buflen) {
 void throw_unsupported_segd_error(const std::uint8_t* buf, std::size_t buflen, int offset) {
     const std::uint8_t* block = buf + static_cast<std::size_t>(offset);
     const std::size_t block_len = buflen - static_cast<std::size_t>(offset);
-    const int format_code = block_len >= 32 ? read_format_code(block, block_len) : 0;
+    const std::string format_nibbles =
+        block_len >= 32 ? hex_nibbles(block, block_len, 5, 4) : std::string{};
+    const int format_code = block_len >= 32 ? demux_format_from_nibbles(block, block_len) : -1;
     std::string message = "Input does not look like a supported SEG-D record";
-    if (format_code != 0) {
-        message += " (sample format " + std::to_string(format_code) + " is not supported)";
+    if (!format_nibbles.empty()) {
+        message += " (format nibbles '" + format_nibbles + "'";
+        if (format_code > 0) {
+            message += ", code " + std::to_string(format_code);
+        }
+        message += " is not supported)";
     } else if (block_len >= 4) {
         message += " (header starts with ";
         for (int i = 0; i < 4; ++i) {
@@ -80,6 +71,12 @@ int detect_header_offset(const std::uint8_t* buf, std::size_t buflen) {
     if (buflen >= 160 && std::memcmp(buf + 4, "SD3.", 4) == 0) {
         return 128;
     }
+    if (buflen >= 288 && std::memcmp(buf + 132, "SD2.", 4) == 0) {
+        return 128;
+    }
+    if (buflen >= 288 && std::memcmp(buf + 132, "SD3.", 4) == 0) {
+        return 128;
+    }
     if (buflen >= 64 && std::memcmp(buf, "SS36", 4) == 0) {
         if (looks_like_segd(buf + 32, buflen - 32)) {
             return 32;
@@ -87,6 +84,17 @@ int detect_header_offset(const std::uint8_t* buf, std::size_t buflen) {
     }
     if (looks_like_segd(buf, buflen)) {
         return 0;
+    }
+    for (int offset : {32, 128}) {
+        if (static_cast<std::size_t>(offset) + 32 > buflen) {
+            continue;
+        }
+        if (offset == 32 && std::memcmp(buf, "SS36", 4) == 0) {
+            continue;
+        }
+        if (looks_like_segd(buf + offset, buflen - static_cast<std::size_t>(offset))) {
+            return offset;
+        }
     }
     throw_unsupported_segd_error(buf, buflen, 0);
 }
@@ -171,7 +179,7 @@ std::pair<GeneralHeader, int> parse_general_headers(const std::uint8_t* buf, std
 
     const std::string file_text = hex_nibbles(block1, 32, 1, 4);
     general.file_number = (file_text == "FFFF") ? -1 : int_from_hex_text(file_text, -1);
-    general.format_code = bcd_int(block1, 32, 5, 4);
+    general.format_code = demux_format_from_nibbles(block1, 32);
     general.sample_bits = sample_bits(general.format_code);
     if (general.sample_bits == 0 && general.format_code != 200) {
         throw SegdFormatError("Unknown SEG-D sample format");

@@ -15,6 +15,8 @@ int int_from_nibbles(const std::uint8_t* buf, std::size_t len, int pos, int coun
 int int_from_hex_text(const std::string& text, int default_value = 0);
 bool is_all_sentinel_f(const std::string& text);
 int parse_nibble_text(const std::string& text);
+/// SEG-D general header bytes 5–8: format code as decimal BCD (8058, 8036, …), not hex value.
+int demux_format_from_nibbles(const std::uint8_t* buf, std::size_t len);
 std::string bcd_str(const std::uint8_t* buf, std::size_t len, int pos, int count);
 int uint_item(const std::uint8_t* buf, std::size_t len, int pos, int count);
 int sint_item(const std::uint8_t* buf, std::size_t len, int pos, int count);

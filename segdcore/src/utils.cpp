@@ -6,6 +6,7 @@
 #include <array>
 #include <cmath>
 #include <cstring>
+#include <iomanip>
 #include <sstream>
 #include <stdexcept>
 
@@ -168,6 +169,40 @@ int parse_nibble_text(const std::string& text) {
     } catch (const std::exception&) {
         throw SegdFormatError("Invalid numeric field in SEG-D header: \"" + text + "\"");
     }
+}
+
+int demux_format_from_nibbles(const std::uint8_t* buf, std::size_t len) {
+    if (len < 32) {
+        return -1;
+    }
+    const std::string text = hex_nibbles(buf, len, 5, 4);
+    if (text.empty() || is_all_sentinel_f(text) || text.front() == 'F') {
+        return -1;
+    }
+
+    static const int kFormatCodes[] = {
+        15,   22,   24,   36,   38,   42,   44,   48,   58,   80,   200,  8015, 8022, 8024,
+        8036, 8038, 8042, 8044, 8048, 8058, 8080, 9036, 9038, 9058, 9080,
+    };
+    for (int code : kFormatCodes) {
+        if (text == std::to_string(code)) {
+            return code;
+        }
+        std::ostringstream padded;
+        padded << std::setw(4) << std::setfill('0') << code;
+        if (text == padded.str()) {
+            return code;
+        }
+    }
+
+    if (std::all_of(text.begin(), text.end(), [](unsigned char c) { return c >= '0' && c <= '9'; })) {
+        try {
+            return std::stoi(text, nullptr, 10);
+        } catch (const std::exception&) {
+            return -1;
+        }
+    }
+    return -1;
 }
 
 }  // namespace segdcore
