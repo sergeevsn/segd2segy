@@ -22,16 +22,52 @@ std::size_t len(const std::vector<std::uint8_t>& data) {
     return data.size();
 }
 
+int read_format_code(const std::uint8_t* buf, std::size_t buflen) {
+    if (buflen < 32) {
+        return 0;
+    }
+    const std::string text = hex_nibbles(buf, buflen, 5, 4);
+    if (text.empty() || is_all_sentinel_f(text)) {
+        return -1;
+    }
+    try {
+        return parse_nibble_text(text);
+    } catch (const std::exception&) {
+        return 0;
+    }
+}
+
 bool looks_like_segd(const std::uint8_t* buf, std::size_t buflen) {
     if (buflen < 32) {
         return false;
     }
-    try {
-        const int format_code = bcd_int(buf, buflen, 5, 4);
-        return is_supported_format(format_code);
-    } catch (...) {
-        return false;
+    const int format_code = read_format_code(buf, buflen);
+    if (format_code == 200) {
+        return true;
     }
+    return is_supported_format(format_code);
+}
+
+void throw_unsupported_segd_error(const std::uint8_t* buf, std::size_t buflen, int offset) {
+    const std::uint8_t* block = buf + static_cast<std::size_t>(offset);
+    const std::size_t block_len = buflen - static_cast<std::size_t>(offset);
+    const int format_code = block_len >= 32 ? read_format_code(block, block_len) : 0;
+    std::string message = "Input does not look like a supported SEG-D record";
+    if (format_code != 0) {
+        message += " (sample format " + std::to_string(format_code) + " is not supported)";
+    } else if (block_len >= 4) {
+        message += " (header starts with ";
+        for (int i = 0; i < 4; ++i) {
+            const char hex[3] = {
+                "0123456789ABCDEF"[(block[i] >> 4) & 0xF],
+                "0123456789ABCDEF"[block[i] & 0xF],
+                '\0',
+            };
+            message += hex;
+        }
+        message += ")";
+    }
+    throw SegdFormatError(message);
 }
 
 int detect_header_offset(const std::uint8_t* buf, std::size_t buflen) {
@@ -49,10 +85,10 @@ int detect_header_offset(const std::uint8_t* buf, std::size_t buflen) {
             return 32;
         }
     }
-    if (!looks_like_segd(buf, buflen)) {
-        throw SegdFormatError("Input does not look like a supported SEG-D record");
+    if (looks_like_segd(buf, buflen)) {
+        return 0;
     }
-    return 0;
+    throw_unsupported_segd_error(buf, buflen, 0);
 }
 
 const ChannelSet* find_channel_set(

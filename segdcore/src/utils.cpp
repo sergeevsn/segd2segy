@@ -21,23 +21,6 @@ int nibble(const std::uint8_t* buf, int nibble_index) {
     return byte_value & 0x0F;
 }
 
-bool is_all_sentinel_f(const std::string& text) {
-    return !text.empty() &&
-           std::all_of(text.begin(), text.end(), [](unsigned char c) { return c == 'F'; });
-}
-
-int parse_nibble_text(const std::string& text) {
-    try {
-        return std::stoi(text, nullptr, 10);
-    } catch (const std::exception&) {
-    }
-    try {
-        return static_cast<int>(std::stoul(text, nullptr, 16));
-    } catch (const std::exception&) {
-        throw SegdFormatError("Invalid numeric field in SEG-D header: \"" + text + "\"");
-    }
-}
-
 }  // namespace
 
 std::string hex_nibbles(const std::uint8_t* buf, std::size_t len, int pos, int count) {
@@ -168,6 +151,23 @@ bool is_supported_format(int format_code) {
 int sample_byte_count(int format_code, int sample_count) {
     const int bits = sample_bits(format_code);
     return static_cast<int>((static_cast<long long>(sample_count) * bits) / 8);
+}
+
+bool is_all_sentinel_f(const std::string& text) {
+    return !text.empty() &&
+           std::all_of(text.begin(), text.end(), [](unsigned char c) { return c == 'F'; });
+}
+
+int parse_nibble_text(const std::string& text) {
+    try {
+        return std::stoi(text, nullptr, 10);
+    } catch (const std::exception&) {
+    }
+    try {
+        return static_cast<int>(std::stoul(text, nullptr, 16));
+    } catch (const std::exception&) {
+        throw SegdFormatError("Invalid numeric field in SEG-D header: \"" + text + "\"");
+    }
 }
 
 }  // namespace segdcore

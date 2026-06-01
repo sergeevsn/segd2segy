@@ -142,8 +142,18 @@ bool is_segd_extension(const fs::path& path) {
 }
 
 std::vector<fs::path> collect_input_files(const Options& options) {
+    if (fs::is_regular_file(options.input_dir)) {
+        if (!is_segd_extension(options.input_dir)) {
+            throw std::runtime_error("Input file is not a SEG-D file (.sgd / .segd): " +
+                                     options.input_dir.string());
+        }
+        if (!matches_pattern(options.input_dir, options.pattern)) {
+            throw std::runtime_error("Input file does not match --pattern: " + options.input_dir.string());
+        }
+        return {options.input_dir};
+    }
     if (!fs::is_directory(options.input_dir)) {
-        throw std::runtime_error("Input path is not a directory: " + options.input_dir.string());
+        throw std::runtime_error("Input path is not a directory or SEG-D file: " + options.input_dir.string());
     }
 
     std::vector<fs::path> files;
