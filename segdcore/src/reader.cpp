@@ -22,41 +22,33 @@ std::size_t len(const std::vector<std::uint8_t>& data) {
     return data.size();
 }
 
-bool looks_like_segd(const std::uint8_t* buf, std::size_t buflen) {
-    if (buflen < 32) {
+bool is_valid_general_header_at(const std::uint8_t* buf, std::size_t buflen, int offset) {
+    if (offset < 0 || static_cast<std::size_t>(offset) + 32 > buflen) {
         return false;
     }
-    const int format_code = demux_format_from_nibbles(buf, buflen);
+    const std::uint8_t* block = buf + static_cast<std::size_t>(offset);
+    const std::size_t block_len = buflen - static_cast<std::size_t>(offset);
+    const int format_code = demux_format_from_nibbles(block, block_len);
     if (format_code == 200) {
         return true;
     }
     return is_supported_format(format_code);
 }
 
-void throw_unsupported_segd_error(const std::uint8_t* buf, std::size_t buflen, int offset) {
-    const std::uint8_t* block = buf + static_cast<std::size_t>(offset);
-    const std::size_t block_len = buflen - static_cast<std::size_t>(offset);
-    const std::string format_nibbles =
-        block_len >= 32 ? hex_nibbles(block, block_len, 5, 4) : std::string{};
-    const int format_code = block_len >= 32 ? demux_format_from_nibbles(block, block_len) : -1;
+void throw_unsupported_segd_error(const std::uint8_t* buf, std::size_t buflen) {
     std::string message = "Input does not look like a supported SEG-D record";
-    if (!format_nibbles.empty()) {
-        message += " (format nibbles '" + format_nibbles + "'";
+    for (int offset : {0, 32, 128}) {
+        if (static_cast<std::size_t>(offset) + 32 > buflen) {
+            continue;
+        }
+        const std::uint8_t* block = buf + static_cast<std::size_t>(offset);
+        const std::size_t block_len = buflen - static_cast<std::size_t>(offset);
+        const std::string format_nibbles = hex_nibbles(block, block_len, 5, 4);
+        const int format_code = demux_format_from_nibbles(block, block_len);
+        message += "\n  offset " + std::to_string(offset) + ": format nibbles '" + format_nibbles + "'";
         if (format_code > 0) {
-            message += ", code " + std::to_string(format_code);
+            message += " (code " + std::to_string(format_code) + ")";
         }
-        message += " is not supported)";
-    } else if (block_len >= 4) {
-        message += " (header starts with ";
-        for (int i = 0; i < 4; ++i) {
-            const char hex[3] = {
-                "0123456789ABCDEF"[(block[i] >> 4) & 0xF],
-                "0123456789ABCDEF"[block[i] & 0xF],
-                '\0',
-            };
-            message += hex;
-        }
-        message += ")";
     }
     throw SegdFormatError(message);
 }
@@ -65,38 +57,40 @@ int detect_header_offset(const std::uint8_t* buf, std::size_t buflen) {
     if (buflen < 32) {
         throw SegdFormatError("Input is too short for a SEG-D general header");
     }
+
+    // Demux SEG-D general header block #1 normally starts at file offset 0.
+    if (is_valid_general_header_at(buf, buflen, 0)) {
+        return 0;
+    }
+
     if (buflen >= 160 && std::memcmp(buf + 4, "SD2.", 4) == 0) {
-        return 128;
+        if (is_valid_general_header_at(buf, buflen, 128)) {
+            return 128;
+        }
     }
     if (buflen >= 160 && std::memcmp(buf + 4, "SD3.", 4) == 0) {
-        return 128;
+        if (is_valid_general_header_at(buf, buflen, 128)) {
+            return 128;
+        }
     }
     if (buflen >= 288 && std::memcmp(buf + 132, "SD2.", 4) == 0) {
-        return 128;
+        if (is_valid_general_header_at(buf, buflen, 128)) {
+            return 128;
+        }
     }
     if (buflen >= 288 && std::memcmp(buf + 132, "SD3.", 4) == 0) {
-        return 128;
+        if (is_valid_general_header_at(buf, buflen, 128)) {
+            return 128;
+        }
     }
     if (buflen >= 64 && std::memcmp(buf, "SS36", 4) == 0) {
-        if (looks_like_segd(buf + 32, buflen - 32)) {
+        if (is_valid_general_header_at(buf, buflen, 32)) {
             return 32;
         }
     }
-    if (looks_like_segd(buf, buflen)) {
-        return 0;
-    }
-    for (int offset : {32, 128}) {
-        if (static_cast<std::size_t>(offset) + 32 > buflen) {
-            continue;
-        }
-        if (offset == 32 && std::memcmp(buf, "SS36", 4) == 0) {
-            continue;
-        }
-        if (looks_like_segd(buf + offset, buflen - static_cast<std::size_t>(offset))) {
-            return offset;
-        }
-    }
-    throw_unsupported_segd_error(buf, buflen, 0);
+
+    throw_unsupported_segd_error(buf, buflen);
+    return 0;
 }
 
 const ChannelSet* find_channel_set(
