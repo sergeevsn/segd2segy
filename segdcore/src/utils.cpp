@@ -21,6 +21,23 @@ int nibble(const std::uint8_t* buf, int nibble_index) {
     return byte_value & 0x0F;
 }
 
+bool is_all_sentinel_f(const std::string& text) {
+    return !text.empty() &&
+           std::all_of(text.begin(), text.end(), [](unsigned char c) { return c == 'F'; });
+}
+
+int parse_nibble_text(const std::string& text) {
+    try {
+        return std::stoi(text, nullptr, 10);
+    } catch (const std::exception&) {
+    }
+    try {
+        return static_cast<int>(std::stoul(text, nullptr, 16));
+    } catch (const std::exception&) {
+        throw SegdFormatError("Invalid numeric field in SEG-D header: \"" + text + "\"");
+    }
+}
+
 }  // namespace
 
 std::string hex_nibbles(const std::uint8_t* buf, std::size_t len, int pos, int count) {
@@ -43,10 +60,10 @@ int bcd_int(const std::uint8_t* buf, std::size_t len, int pos, int count) {
     if (text.empty()) {
         return 0;
     }
-    if (text.front() == 'F') {
+    if (text.front() == 'F' || is_all_sentinel_f(text)) {
         return -1;
     }
-    return std::stoi(text, nullptr, 10);
+    return parse_nibble_text(text);
 }
 
 int int_from_nibbles(const std::uint8_t* buf, std::size_t len, int pos, int count) {
@@ -58,17 +75,10 @@ int int_from_nibbles(const std::uint8_t* buf, std::size_t len, int pos, int coun
 }
 
 int int_from_hex_text(const std::string& text, int default_value) {
-    if (text.empty()) {
+    if (text.empty() || is_all_sentinel_f(text)) {
         return default_value;
     }
-    if (std::all_of(text.begin(), text.end(), [](unsigned char c) { return c == 'F'; })) {
-        return default_value;
-    }
-    try {
-        return std::stoi(text, nullptr, 10);
-    } catch (const std::exception&) {
-        throw SegdFormatError("Invalid decimal field in SEG-D header: \"" + text + "\"");
-    }
+    return parse_nibble_text(text);
 }
 
 std::string bcd_str(const std::uint8_t* buf, std::size_t len, int pos, int count) {
