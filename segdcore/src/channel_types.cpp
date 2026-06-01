@@ -4,8 +4,6 @@
 #include <cctype>
 #include <sstream>
 
-#include "segdcore/headers.hpp"
-
 namespace segdcore {
 namespace {
 
@@ -59,13 +57,19 @@ bool is_default_seismic_channel_type(int channel_type, int revision_major) {
     return channel_type == 1;
 }
 
-void ChannelFilter::begin_file(const std::vector<ChannelSet>& channel_sets) {
+void ChannelFilter::begin_file(const std::vector<Trace>& traces) {
     keep_channel_set_number_ = -1;
     if (!skip_service) {
         return;
     }
-    for (const ChannelSet& channel_set : channel_sets) {
-        keep_channel_set_number_ = std::max(keep_channel_set_number_, channel_set.channel_set_number);
+
+    for (const Trace& trace : traces) {
+        const int channel_set_number = trace.channel_set ? trace.channel_set->channel_set_number
+                                                         : trace.header.channel_set_number;
+        if (channel_set_number < 0) {
+            continue;
+        }
+        keep_channel_set_number_ = std::max(keep_channel_set_number_, channel_set_number);
     }
 }
 

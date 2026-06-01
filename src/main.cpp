@@ -49,7 +49,7 @@ void print_usage(const char* argv0) {
         << "  -i, --input DIR          Folder with SEG-D files (.sgd / .segd)\n"
         << "  -o, --output FILE        Output SEG-Y file\n"
         << "  --pattern GLOB           Extra filename filter (default: all .sgd and .segd)\n"
-        << "  --skip-service           Export only the last channel set by number in each file\n"
+        << "  --skip-service           Export only the last channel set that has traces in each file\n"
         << "  --skip-errors            Skip SEG-D files that fail to open or read (warn and continue)\n"
         << "  --include-types LIST     Comma-separated channel type codes to keep\n"
         << "  --exclude-types LIST     Comma-separated channel type codes to drop\n"
@@ -358,7 +358,7 @@ int main(int argc, char** argv) {
                 std::cerr << "Warning: format code mismatch in " << path << '\n';
             }
 
-            options.channel_filter.begin_file(segd.channel_sets());
+            options.channel_filter.begin_file(segd.traces());
 
             if (options.verbose) {
                 std::cout << "Reading " << path.filename().string() << " (file_number=" << general.file_number
@@ -440,7 +440,26 @@ int main(int argc, char** argv) {
         progress_bar.finish();
 
         if (traces_written == 0) {
-            throw std::runtime_error("No traces were written; check channel filters and input files");
+            std::string message = "No traces were written";
+            if (files_skipped > 0 && files_written == 0) {
+                message += ": all " + std::to_string(files_skipped) +
+                           " SEG-D file(s) failed or were skipped (--skip-errors)";
+            } else if (files_written > 0) {
+                message += " from " + std::to_string(files_written) + " readable SEG-D file(s)";
+                if (options.skip_service) {
+                    message += "; --skip-service left no matching traces (try without it)";
+                } else if (traces_skipped > 0) {
+                    message += "; " + std::to_string(traces_skipped) +
+                               " trace(s) excluded by channel type filters";
+                }
+                if (files_skipped > 0) {
+                    message += "; " + std::to_string(files_skipped) +
+                               " other file(s) skipped (--skip-errors)";
+                }
+            } else {
+                message += "; check channel filters and input files";
+            }
+            throw std::runtime_error(message);
         }
 
         std::cout << "Wrote " << traces_written << " traces from " << files_written << " SEG-D files to "

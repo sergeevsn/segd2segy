@@ -34,7 +34,7 @@ segd2segy -i /path/to/segd_folder -o merged.sgy [options]
 | `-i`, `--input DIR` | Directory containing `.sgd` / `.segd` files |
 | `-o`, `--output FILE` | Output SEG-Y path |
 | `--pattern GLOB` | Optional filename filter (default: all `.sgd` and `.segd`) |
-| `--skip-service` | Export only the channel set with the **highest** `channel_set_number` in each file |
+| `--skip-service` | Per file, export only the **highest-numbered channel set that actually has traces** (empty descriptors are ignored) |
 | `--skip-errors` | Skip files that fail to open or read; print a warning and continue |
 | `--include-types LIST` | Keep only these channel type codes (e.g. `1,0x10`) |
 | `--exclude-types LIST` | Drop these channel type codes |
@@ -46,7 +46,7 @@ segd2segy -i /path/to/segd_folder -o merged.sgy [options]
 
 Filtering applies to **channel set descriptors** (not individual trace headers):
 
-- **`--skip-service`** — per SEG-D file, keeps the channel set with the largest `channel_set_number`.
+- **`--skip-service`** — per SEG-D file, keeps the channel set with the largest `channel_set_number` among sets that have at least one trace (descriptors without traces are skipped).
 - **`--include-types`** — if set, only listed channel types are exported (overrides `--skip-service`).
 - **`--exclude-types`** — drops listed types when no include list is given.
 
