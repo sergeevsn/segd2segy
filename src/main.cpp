@@ -330,11 +330,13 @@ int main(int argc, char** argv) {
 
         int file_index = 0;
         for (const fs::path& path : files) {
+            progress_bar.update(file_index + 1, path.filename().string());
+
             segdcore::SegdFile segd;
             try {
                 segd = segdcore::SegdFile::open(path.string(), false);
-            } catch (const segdcore::SegdError&) {
-                throw;
+            } catch (const segdcore::SegdError& error) {
+                throw segdcore::SegdFormatError(path.string() + ": " + error.what());
             } catch (const std::exception& error) {
                 throw std::runtime_error(std::string("Failed to read ") + path.string() + ": " + error.what());
             }
@@ -415,7 +417,6 @@ int main(int argc, char** argv) {
                 ++traces_written;
             }
             ++files_written;
-            progress_bar.update(file_index + 1, path.filename().string());
             ++file_index;
         }
         progress_bar.finish();
@@ -431,7 +432,7 @@ int main(int argc, char** argv) {
         }
         return 0;
     } catch (const segdcore::SegdError& error) {
-        std::cerr << "SEG-D error: " << error.what() << '\n';
+        std::cerr << '\n' << "SEG-D error: " << error.what() << '\n';
         return 2;
     } catch (const std::exception& error) {
         std::cerr << "Error: " << error.what() << '\n';
