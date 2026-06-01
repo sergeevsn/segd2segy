@@ -73,7 +73,7 @@ ChannelSet parse_channel_set_legacy(const std::uint8_t* block, int index, const 
     channel_set.index = index;
     channel_set.scan_type_number = int_from_nibbles(block, 32, 1, 2);
     const std::string cs_text = hex_nibbles(block, 32, 3, 2);
-    channel_set.channel_set_number = (cs_text == "FF") ? -1 : std::stoi(cs_text, nullptr, 10);
+    channel_set.channel_set_number = (cs_text == "FF") ? -1 : int_from_hex_text(cs_text, -1);
     if (channel_set.channel_set_number <= 0) {
         channel_set.channel_set_number = uint_item(block, 32, 53, 4);
     }
@@ -134,7 +134,7 @@ std::pair<GeneralHeader, int> parse_general_headers(const std::uint8_t* buf, std
     const std::uint8_t* block1 = buf + offset;
 
     const std::string file_text = hex_nibbles(block1, 32, 1, 4);
-    general.file_number = (file_text == "FFFF") ? -1 : std::stoi(file_text, nullptr, 10);
+    general.file_number = (file_text == "FFFF") ? -1 : int_from_hex_text(file_text, -1);
     general.format_code = bcd_int(block1, 32, 5, 4);
     general.sample_bits = sample_bits(general.format_code);
     if (general.sample_bits == 0 && general.format_code != 200) {
@@ -145,10 +145,10 @@ std::pair<GeneralHeader, int> parse_general_headers(const std::uint8_t* buf, std
     general.general_header_blocks = (gh_text == "F") ? -1 : bcd_int(block1, 32, 23, 1);
     const std::string record_text = hex_nibbles(block1, 32, 52, 3);
     general.record_length_ms =
-        (record_text == "FFF") ? -1.0 : std::stoi(record_text, nullptr, 10) * 0.1024 * 1000.0;
+        (record_text == "FFF") ? -1.0 : static_cast<double>(int_from_hex_text(record_text, 0)) * 0.1024 * 1000.0;
     general.scan_types = int_from_nibbles(block1, 32, 55, 2);
     const std::string cs_text = hex_nibbles(block1, 32, 57, 2);
-    general.channel_sets_per_scan_type = (cs_text == "FF") ? -1 : std::stoi(cs_text, nullptr, 10);
+    general.channel_sets_per_scan_type = (cs_text == "FF") ? -1 : int_from_hex_text(cs_text, -1);
     std::string ec_text = hex_nibbles(block1, 32, 61, 2);
     std::string ex_text = hex_nibbles(block1, 32, 63, 2);
 
@@ -203,8 +203,8 @@ std::pair<GeneralHeader, int> parse_general_headers(const std::uint8_t* buf, std
 
     general.sample_interval_ms = uint_item(block1, 32, 45, 2) / 16.0;
     general.skew_blocks = int_from_nibbles(block1, 32, 59, 2);
-    general.extended_header_blocks = std::stoi(ec_text, nullptr, 10);
-    general.external_header_blocks = std::stoi(ex_text, nullptr, 10);
+    general.extended_header_blocks = int_from_hex_text(ec_text, 0);
+    general.external_header_blocks = int_from_hex_text(ex_text, 0);
     general.manufacturer_code = bcd_int(block1, 32, 33, 2);
     general.manufacturer_serial = bcd_int(block1, 32, 35, 4);
     return {general, cursor};
@@ -263,14 +263,14 @@ std::optional<std::pair<int, int>> read_trace_header_shallow(
     }
     const std::string file_text = hex_nibbles(block, 20, 1, 4);
     const int file_number =
-        (file_text == "FFFF") ? uint_item(block, 20, 35, 6) : std::stoi(file_text, nullptr, 10);
+        (file_text == "FFFF") ? uint_item(block, 20, 35, 6) : int_from_hex_text(file_text, -1);
     if (general.file_number >= 0 && file_number != general.file_number) {
         return std::nullopt;
     }
     const int scan_type = int_from_nibbles(block, 20, 5, 2);
     const std::string cs_text = hex_nibbles(block, 20, 7, 2);
     const int channel_set_number =
-        (cs_text == "FF") ? uint_item(block, 20, 31, 4) : std::stoi(cs_text, nullptr, 10);
+        (cs_text == "FF") ? uint_item(block, 20, 31, 4) : int_from_hex_text(cs_text, -1);
     if (!find_channel_set(channel_sets, scan_type, channel_set_number)) {
         return std::nullopt;
     }
@@ -381,20 +381,20 @@ std::optional<TraceHeader> read_trace_header(
     }
     const std::string file_text = hex_nibbles(block, 20, 1, 4);
     const int file_number =
-        (file_text == "FFFF") ? uint_item(block, 20, 35, 6) : std::stoi(file_text, nullptr, 10);
+        (file_text == "FFFF") ? uint_item(block, 20, 35, 6) : int_from_hex_text(file_text, -1);
     if (general.file_number >= 0 && file_number != general.file_number) {
         return std::nullopt;
     }
     const int scan_type = int_from_nibbles(block, 20, 5, 2);
     const std::string cs_text = hex_nibbles(block, 20, 7, 2);
     const int channel_set_number =
-        (cs_text == "FF") ? uint_item(block, 20, 31, 4) : std::stoi(cs_text, nullptr, 10);
+        (cs_text == "FF") ? uint_item(block, 20, 31, 4) : int_from_hex_text(cs_text, -1);
     const ChannelSet* channel_set = find_channel_set(channel_sets, scan_type, channel_set_number);
     if (!channel_set || channel_set->channel_count < 1) {
         return std::nullopt;
     }
     const std::string trace_text = hex_nibbles(block, 20, 9, 4);
-    int trace_number = (trace_text == "FFFF") ? -1 : std::stoi(trace_text, nullptr, 10);
+    int trace_number = (trace_text == "FFFF") ? -1 : int_from_hex_text(trace_text, -1);
     const int extended_count = uint_item(block, 20, 19, 2);
     const int extended_offset = offset + 20;
     const int extended_size = extended_count * 32;

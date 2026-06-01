@@ -241,7 +241,14 @@ int main(int argc, char** argv) {
 
         int file_index = 0;
         for (const fs::path& path : files) {
-            segdcore::SegdFile segd = segdcore::SegdFile::open(path.string(), false);
+            segdcore::SegdFile segd;
+            try {
+                segd = segdcore::SegdFile::open(path.string(), false);
+            } catch (const segdcore::SegdError&) {
+                throw;
+            } catch (const std::exception& error) {
+                throw std::runtime_error(std::string("Failed to read ") + path.string() + ": " + error.what());
+            }
             const auto& general = segd.general();
 
             if (!reference_format.has_value()) {

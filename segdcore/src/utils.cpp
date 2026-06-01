@@ -1,5 +1,7 @@
 #include "segdcore/utils.hpp"
 
+#include "segdcore/exception.hpp"
+
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -52,7 +54,21 @@ int int_from_nibbles(const std::uint8_t* buf, std::size_t len, int pos, int coun
     if (text.empty()) {
         return 0;
     }
-    return std::stoi(text, nullptr, 10);
+    return int_from_hex_text(text, 0);
+}
+
+int int_from_hex_text(const std::string& text, int default_value) {
+    if (text.empty()) {
+        return default_value;
+    }
+    if (std::all_of(text.begin(), text.end(), [](unsigned char c) { return c == 'F'; })) {
+        return default_value;
+    }
+    try {
+        return std::stoi(text, nullptr, 10);
+    } catch (const std::exception&) {
+        throw SegdFormatError("Invalid decimal field in SEG-D header: \"" + text + "\"");
+    }
 }
 
 std::string bcd_str(const std::uint8_t* buf, std::size_t len, int pos, int count) {

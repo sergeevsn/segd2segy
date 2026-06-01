@@ -11,6 +11,8 @@ std::string hex_nibbles(const std::uint8_t* buf, std::size_t len, int pos, int c
 int bcd_int(const std::uint8_t* buf, std::size_t len, int pos, int count);
 /// Parse nibble field as a decimal integer (matches Python int(hex_nibbles(...))).
 int int_from_nibbles(const std::uint8_t* buf, std::size_t len, int pos, int count);
+/// Parse hex_nibbles text as base-10 int; all-F fields (FF, FFFF, …) return default_value.
+int int_from_hex_text(const std::string& text, int default_value = 0);
 std::string bcd_str(const std::uint8_t* buf, std::size_t len, int pos, int count);
 int uint_item(const std::uint8_t* buf, std::size_t len, int pos, int count);
 int sint_item(const std::uint8_t* buf, std::size_t len, int pos, int count);
