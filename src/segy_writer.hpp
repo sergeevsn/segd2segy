@@ -34,6 +34,7 @@ private:
     static void write_trace_header(const SegyTraceMeta& meta, std::uint8_t* header);
 
     std::string path_;
+    std::vector<char> stream_buffer_;
     std::ofstream output_;
     std::uint64_t trace_count_ = 0;
 };

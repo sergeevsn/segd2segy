@@ -40,25 +40,14 @@ void write_bytes(std::ofstream& out, const void* data, std::size_t size) {
     }
 }
 
-/// SEG-Y Rev 1 data sample format 5: IEEE 32-bit float, big-endian.
-void write_float32_be(std::ofstream& out, float sample) {
-    std::uint32_t bits = 0;
-    std::memcpy(&bits, &sample, sizeof(bits));
-    const std::uint8_t bytes[4] = {
-        static_cast<std::uint8_t>((bits >> 24) & 0xFF),
-        static_cast<std::uint8_t>((bits >> 16) & 0xFF),
-        static_cast<std::uint8_t>((bits >> 8) & 0xFF),
-        static_cast<std::uint8_t>(bits & 0xFF),
-    };
-    write_bytes(out, bytes, sizeof(bytes));
-}
-
 }  // namespace
 
 SegyWriter::SegyWriter(std::string path) : path_(std::move(path)), output_(path_, std::ios::binary) {
     if (!output_) {
         throw std::runtime_error("Cannot create output file: " + path_);
     }
+    stream_buffer_.resize(1 << 20);
+    output_.rdbuf()->pubsetbuf(stream_buffer_.data(), static_cast<std::streamsize>(stream_buffer_.size()));
 }
 
 void SegyWriter::write_int16_be(std::uint8_t* dst, std::int16_t value) {
@@ -110,8 +99,8 @@ void SegyWriter::write_trace(const SegyTraceMeta& meta, const std::vector<float>
     write_trace_header(meta, header);
     write_bytes(output_, header, sizeof(header));
 
-    for (float sample : samples) {
-        write_float32_be(output_, sample);
+    if (!samples.empty()) {
+        write_bytes(output_, samples.data(), samples.size() * sizeof(float));
     }
     ++trace_count_;
 }

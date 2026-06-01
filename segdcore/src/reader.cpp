@@ -492,13 +492,29 @@ std::vector<Trace> parse_demux_traces(
 SegdFile::SegdFile(std::vector<std::uint8_t> data, std::string source)
     : data_(std::move(data)), source_(std::move(source)) {}
 
-SegdFile SegdFile::open(const std::string& path, bool headers_only) {
+std::vector<std::uint8_t> read_binary_file(const std::string& path) {
     std::ifstream input(path, std::ios::binary);
     if (!input) {
         throw SegdFormatError("Cannot open file: " + path);
     }
-    std::vector<std::uint8_t> data((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
-    SegdFile file(std::move(data), path);
+    input.seekg(0, std::ios::end);
+    const std::streamoff size = input.tellg();
+    if (size < 0) {
+        throw SegdFormatError("Cannot read file size: " + path);
+    }
+    input.seekg(0, std::ios::beg);
+    std::vector<std::uint8_t> data(static_cast<std::size_t>(size));
+    if (!data.empty()) {
+        input.read(reinterpret_cast<char*>(data.data()), size);
+        if (!input) {
+            throw SegdFormatError("Failed to read file: " + path);
+        }
+    }
+    return data;
+}
+
+SegdFile SegdFile::open(const std::string& path, bool headers_only) {
+    SegdFile file(read_binary_file(path), path);
     file.parse(headers_only);
     return file;
 }

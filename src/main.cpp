@@ -32,7 +32,6 @@ struct Options {
     fs::path input_dir;
     fs::path output_file;
     std::string pattern;  // empty = all .sgd and .segd files
-    std::string sort_mode = "name";
     bool skip_service = false;
     segdcore::ChannelFilter channel_filter;
     bool verbose = false;
@@ -46,7 +45,6 @@ void print_usage(const char* argv0) {
         << "  -i, --input DIR          Folder with SEG-D files (.sgd / .segd)\n"
         << "  -o, --output FILE        Output SEG-Y file\n"
         << "  --pattern GLOB           Extra filename filter (default: all .sgd and .segd)\n"
-        << "  --sort MODE              Sort input files: name | fileno (default: name)\n"
         << "  --skip-service           Export only the last channel set by number in each file\n"
         << "  --include-types LIST     Comma-separated channel type codes to keep\n"
         << "  --exclude-types LIST     Comma-separated channel type codes to drop\n"
@@ -87,12 +85,6 @@ Options parse_args(int argc, char** argv) {
                 throw std::invalid_argument("Missing value for --pattern");
             }
             options.pattern = *value;
-        } else if (arg == "--sort") {
-            const auto value = arg_value(i, argc, argv);
-            if (!value) {
-                throw std::invalid_argument("Missing value for --sort");
-            }
-            options.sort_mode = *value;
         } else if (arg == "--skip-service") {
             options.skip_service = true;
         } else if (arg == "--include-types") {
@@ -173,21 +165,8 @@ std::vector<fs::path> collect_input_files(const Options& options) {
         throw std::runtime_error("No SEG-D files found in " + options.input_dir.string());
     }
 
-    if (options.sort_mode == "fileno") {
-        std::stable_sort(files.begin(), files.end(), [](const fs::path& left, const fs::path& right) {
-            try {
-                const segdcore::SegdFile l = segdcore::SegdFile::open(left.string(), true);
-                const segdcore::SegdFile r = segdcore::SegdFile::open(right.string(), true);
-                if (l.general().file_number != r.general().file_number) {
-                    return l.general().file_number < r.general().file_number;
-                }
-            } catch (...) {
-            }
-            return left.filename().string() < right.filename().string();
-        });
-    } else {
-        std::sort(files.begin(), files.end());
-    }
+    // Field Record order follows zero-padded filenames (lexicographic sort on full path).
+    std::sort(files.begin(), files.end());
     return files;
 }
 
