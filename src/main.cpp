@@ -1,8 +1,10 @@
 #include <algorithm>
 #include <cctype>
 #include <filesystem>
+#include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <array>
 #include <optional>
 #include <sstream>
 #include <stdexcept>
@@ -23,6 +25,7 @@
 #include "segdcore/channel_types.hpp"
 #include "segdcore/exception.hpp"
 #include "segdcore/reader.hpp"
+#include "segdcore/utils.hpp"
 
 namespace fs = std::filesystem;
 
@@ -50,7 +53,58 @@ void print_usage(const char* argv0) {
         << "  --exclude-types LIST     Comma-separated channel type codes to drop\n"
         << "  -p, --progress           Text progress bar over SEG-D files (replaces -v)\n"
         << "  -v, --verbose            Print per-file and per-channel-set details\n"
+        << "  --probe FILE             Read one SEG-D file and print header diagnostics\n"
         << "  -h, --help               Show this help\n";
+}
+
+int probe_segd_file(const fs::path& path) {
+    if (!fs::is_regular_file(path)) {
+        std::cerr << "Not a file: " << path << '\n';
+        return 1;
+    }
+
+    std::cout << "path: " << fs::absolute(path) << '\n';
+    std::cout << "size: " << fs::file_size(path) << " bytes\n";
+
+    std::array<std::uint8_t, 32> prefix{};
+    {
+        std::ifstream input(path, std::ios::binary);
+        if (!input) {
+            std::cerr << "Cannot open file for read\n";
+            return 1;
+        }
+        input.read(reinterpret_cast<char*>(prefix.data()), static_cast<std::streamsize>(prefix.size()));
+        const std::streamsize got = input.gcount();
+        std::cout << "read first " << got << " bytes\n";
+    }
+
+    std::cout << "hex:";
+    for (std::size_t i = 0; i < prefix.size(); ++i) {
+        std::cout << ' ' << std::hex << std::uppercase << std::setw(2) << std::setfill('0')
+                  << static_cast<unsigned>(prefix[i]);
+    }
+    std::cout << std::dec << '\n';
+
+    const std::string format_nibbles = segdcore::hex_nibbles(prefix.data(), prefix.size(), 5, 4);
+    const int format_code = segdcore::demux_format_from_nibbles(prefix.data(), prefix.size());
+    std::cout << "format nibbles (offset 0): '" << format_nibbles << "' -> code " << format_code << '\n';
+
+    try {
+        const segdcore::SegdFile segd = segdcore::SegdFile::open(path.string(), false);
+        const auto& general = segd.general();
+        std::cout << "SegdFile::open: OK\n";
+        std::cout << "  file_number=" << general.file_number << " format_code=" << general.format_code
+                  << " revision=" << general.revision_major << '.' << general.revision_minor
+                  << " traces=" << segd.traces().size() << " channel_sets=" << segd.channel_sets().size()
+                  << '\n';
+        return 0;
+    } catch (const segdcore::SegdError& error) {
+        std::cerr << "SegdFile::open failed: " << error.what() << '\n';
+        return 2;
+    } catch (const std::exception& error) {
+        std::cerr << "SegdFile::open failed: " << error.what() << '\n';
+        return 2;
+    }
 }
 
 std::optional<std::string> arg_value(int& index, int argc, char** argv) {
@@ -60,6 +114,25 @@ std::optional<std::string> arg_value(int& index, int argc, char** argv) {
     return std::string(argv[++index]);
 }
 
+std::optional<fs::path> parse_probe_arg(int argc, char** argv) {
+    for (int i = 1; i < argc; ++i) {
+        const std::string arg = argv[i];
+        if (arg == "-h" || arg == "--help") {
+            print_usage(argv[0]);
+            std::exit(0);
+        }
+        if (arg == "--probe") {
+            int j = i;
+            const auto value = arg_value(j, argc, argv);
+            if (!value) {
+                throw std::invalid_argument("Missing value for --probe");
+            }
+            return fs::path(*value);
+        }
+    }
+    return std::nullopt;
+}
+
 Options parse_args(int argc, char** argv) {
     Options options;
     for (int i = 1; i < argc; ++i) {
@@ -67,6 +140,8 @@ Options parse_args(int argc, char** argv) {
         if (arg == "-h" || arg == "--help") {
             print_usage(argv[0]);
             std::exit(0);
+        } else if (arg == "--probe") {
+            ++i;
         } else if (arg == "-i" || arg == "--input") {
             const auto value = arg_value(i, argc, argv);
             if (!value) {
@@ -232,6 +307,10 @@ private:
 
 int main(int argc, char** argv) {
     try {
+        if (const std::optional<fs::path> probe = parse_probe_arg(argc, argv)) {
+            return probe_segd_file(*probe);
+        }
+
         Options options = parse_args(argc, argv);
         const std::vector<fs::path> files = collect_input_files(options);
 
