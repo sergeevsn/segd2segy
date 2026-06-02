@@ -3,7 +3,7 @@
 Command-line tool (C++17) that merges demultiplexed **SEG-D** files from a folder into a single **SEG-Y** file.
 
 - Demultiplexed SEG-D is supported; multiplexed SEG-D and SEG-B are rejected with an error.
-- Output samples are **IEEE 32-bit float**; binary header **format code 5**; sample byte order is native (no endian conversion).
+- Output samples are **IEEE 32-bit float**; binary header **format code 5**; sample byte order is **big-endian**.
 - Optional channel-set filters; trace numbers are renumbered within each SEG-D file.
 - Input `.sgd` / `.segd` files are processed in ascending path order (typical zero-padded Field Record names).
 
@@ -62,7 +62,7 @@ Filtering applies to **channel set descriptors** (not individual trace headers):
 
 - Text header — 3200 bytes (EBCDIC).
 - Binary header — 400 bytes; **format 5**, `dt` from the first file, `ns` uniform for the whole file (from the channel set descriptor, typically the same for all traces).
-- Trace — 240-byte header + `ns` × 4-byte IEEE float samples (native endian); every trace uses the same `ns`, padded with zeros or truncated to match the descriptor.
+- Trace — 240-byte header + `ns` × 4-byte IEEE float samples (**big-endian**); every trace uses the same `ns`, padded with zeros or truncated to match the descriptor.
 
 Trace headers include `tracl`, `tracr`/`tracf`, `fldr`, `cdp` (channel set number), `ns`, `dt`, and channel set / scan type in writer-specific byte positions.
 

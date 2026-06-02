@@ -40,6 +40,16 @@ void write_bytes(std::ofstream& out, const void* data, std::size_t size) {
     }
 }
 
+void write_float32_be(std::uint8_t* dst, float value) {
+    std::uint32_t bits = 0;
+    static_assert(sizeof(float) == sizeof(std::uint32_t), "float must be 32-bit");
+    std::memcpy(&bits, &value, sizeof(bits));
+    dst[0] = static_cast<std::uint8_t>((bits >> 24) & 0xFF);
+    dst[1] = static_cast<std::uint8_t>((bits >> 16) & 0xFF);
+    dst[2] = static_cast<std::uint8_t>((bits >> 8) & 0xFF);
+    dst[3] = static_cast<std::uint8_t>(bits & 0xFF);
+}
+
 }  // namespace
 
 SegyWriter::SegyWriter(std::string path) : path_(std::move(path)), output_(path_, std::ios::binary) {
@@ -77,6 +87,11 @@ void SegyWriter::write_binary_header(int sample_interval_us, int samples_per_tra
     write_int16_be(header + 16, static_cast<std::int16_t>(sample_interval_us));
     write_int16_be(header + 20, static_cast<std::int16_t>(samples_per_trace));
     write_int16_be(header + 24, static_cast<std::int16_t>(format_code));
+    // SEG-Y rev1 compatibility fields (bytes 3501-3506).
+    header[300] = 0x01;  // major revision
+    header[301] = 0x00;  // minor revision
+    write_int16_be(header + 302, 1);  // fixed length trace flag
+    write_int16_be(header + 304, 0);  // number of extended textual headers
     write_bytes(output_, header, sizeof(header));
 }
 
@@ -100,7 +115,11 @@ void SegyWriter::write_trace(const SegyTraceMeta& meta, const std::vector<float>
     write_bytes(output_, header, sizeof(header));
 
     if (!samples.empty()) {
-        write_bytes(output_, samples.data(), samples.size() * sizeof(float));
+        std::vector<std::uint8_t> be_samples(samples.size() * sizeof(float));
+        for (std::size_t i = 0; i < samples.size(); ++i) {
+            write_float32_be(be_samples.data() + i * sizeof(float), samples[i]);
+        }
+        write_bytes(output_, be_samples.data(), be_samples.size());
     }
     ++trace_count_;
 }
